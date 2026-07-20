@@ -47,6 +47,7 @@ The app currently has:
 - Dashboard income, expense, and current-balance totals.
 - Dashboard recent transactions.
 - Dashboard monthly top-spending-category summary.
+- Monthly expense total is calculated from the current month only.
 - History list.
 - History search by description/category.
 - History filtering by transaction type and category.
@@ -160,6 +161,8 @@ Improve `transactionService.js` with:
 - A storage version key.
 - A migration path for future schema changes.
 - Optional export/import of local transactions.
+
+This milestone is now implemented: storage has a version key, legacy array data remains readable, malformed records are ignored safely, unsupported storage is not overwritten, and invalid updates preserve the existing transaction.
 
 ### 3. Add dashboard date controls
 

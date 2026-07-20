@@ -1,16 +1,58 @@
 import React, { useCallback, useState } from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView, ScrollView, StyleSheet, Text, View, TouchableOpacity,
+  Modal,
+  TextInput, } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { getTransactions } from '../services/transactionService';
+import { getBudget, saveBudget } from '../services/budgetService';
 
 export default function DashboardScreen() {
   const [transactions, setTransactions] = useState([]);
 
+const [budget, setBudget] = useState(0);
+const [budgetModalVisible, setBudgetModalVisible] = useState(false);
+const [budgetInput, setBudgetInput] = useState('');
+const [remainingBudget, setRemainingBudget] = useState(0);
+
   useFocusEffect(
-    useCallback(() => {
-      getTransactions().then(setTransactions);
-    }, []),
-  );
+  useCallback(() => {
+    loadDashboard();
+  }, []),
+);
+
+async function loadDashboard() {
+  const data = await getTransactions();
+  setTransactions(data);
+
+  const savedBudget = await getBudget();
+  console.log('Saved Budget:', savedBudget);
+  setBudget(savedBudget.amount);
+
+  const totalExpense = data
+    .filter(item => item.type === 'expense')
+    .reduce((sum, item) => sum + item.amount, 0);
+
+  setRemainingBudget(savedBudget.amount  - totalExpense);
+}
+
+async function saveMonthlyBudget() {
+  const value = Number(budgetInput);
+
+  if (isNaN(value) || value < 0) return;
+
+ const saved = await saveBudget(value);
+
+setBudget(saved.amount);
+
+  const totalExpense = transactions
+    .filter(item => item.type === 'expense')
+    .reduce((sum, item) => sum + item.amount, 0);
+
+  setRemainingBudget(saved.amount - totalExpense);
+
+  setBudgetInput('');
+  setBudgetModalVisible(false);
+}
 
   const income = transactions
     .filter(item => item.type === 'income')
@@ -23,9 +65,13 @@ export default function DashboardScreen() {
   monthStart.setDate(1);
   monthStart.setHours(0, 0, 0, 0);
 
+  const monthlyExpenses = transactions.filter(
+    item => item.type === 'expense' && new Date(item.createdAt) >= monthStart,
+  );
+  const monthExpense = monthlyExpenses.reduce((total, item) => total + item.amount, 0);
+
   const topCategories = Object.entries(
-    transactions
-      .filter(item => item.type === 'expense' && new Date(item.createdAt) >= monthStart)
+    monthlyExpenses
       .reduce((totals, item) => {
         const category = item.category || 'Other';
         totals[category] = (totals[category] || 0) + item.amount;
@@ -57,12 +103,97 @@ export default function DashboardScreen() {
           </View>
         </View>
 
+        <View style={styles.budgetCard}>
+
+  <View style={styles.budgetHeader}>
+
+    <Text style={styles.sectionTitle}>
+      Monthly Budget
+    </Text>
+
+    <TouchableOpacity
+      onPress={() => {
+        setBudgetInput(budget.toString());
+        setBudgetModalVisible(true);
+      }}>
+
+      <Text style={styles.editBudget}>
+        {budget > 0 ? 'Edit' : 'Set'}
+      </Text>
+
+    </TouchableOpacity>
+
+  </View>
+
+  <Text style={styles.budgetAmount}>
+    Budget: ${Number(budget).toFixed(2)}
+  </Text>
+
+  <Text style={styles.spentAmount}>
+    Spent: ${Number(expense).toFixed(2)}
+  </Text>
+
+  <Text
+    style={[
+      styles.remainingAmount,
+      {
+        color:
+          remainingBudget >= 0
+            ? '#16a34a'
+            : '#dc2626',
+      },
+    ]}>
+
+    Remaining: ${ (remainingBudget>0) ?  Number(remainingBudget).toFixed(2): 0}
+
+  </Text>
+
+  {budget > 0 && (
+
+    <>
+
+      <View style={styles.progressTrack}>
+
+        <View
+          style={[
+            styles.progressFill,
+            {
+              width: `${Math.min(
+                (expense / budget) * 100,
+                100,
+              )}%`,
+              backgroundColor:
+                expense >= budget
+                  ? '#dc2626'
+                  : expense >= budget * 0.75
+                  ? '#f59e0b'
+                  : '#2563eb',
+            },
+          ]}
+        />
+
+      </View>
+
+      <Text style={styles.progressText}>
+        {Math.min(
+          (expense / budget) * 100,
+          100,
+        ).toFixed(0)}
+        % Used
+      </Text>
+
+    </>
+
+  )}
+
+</View>
+
         <View style={styles.sectionHeader}>
           <View>
             <Text style={styles.sectionTitle}>This month</Text>
             <Text style={styles.sectionHint}>Top spending categories</Text>
           </View>
-          <Text style={styles.monthlyExpense}>-${expense.toFixed(2)}</Text>
+          <Text style={styles.monthlyExpense}>-${monthExpense.toFixed(2)}</Text>
         </View>
 
         <View style={styles.categoryCard}>
@@ -101,6 +232,53 @@ export default function DashboardScreen() {
           <Text style={styles.empty}>No transactions yet. Add your first one.</Text>
         )}
       </ScrollView>
+      <Modal
+  visible={budgetModalVisible}
+  transparent
+  animationType="slide">
+
+  <View style={styles.modalOverlay}>
+
+    <View style={styles.modalContainer}>
+
+      <Text style={styles.modalTitle}>
+        Monthly Budget
+      </Text>
+
+      <TextInput
+        style={styles.modalInput}
+        keyboardType="decimal-pad"
+        placeholder="Enter Budget"
+        value={budgetInput}
+        onChangeText={setBudgetInput}
+      />
+
+      <TouchableOpacity
+        style={styles.saveButton}
+        onPress={saveMonthlyBudget}>
+
+        <Text style={styles.saveButtonText}>
+          Save
+        </Text>
+
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        onPress={() =>
+          setBudgetModalVisible(false)
+        }>
+
+        <Text style={styles.cancelButton}>
+          Cancel
+        </Text>
+
+      </TouchableOpacity>
+
+    </View>
+
+  </View>
+
+</Modal>
     </SafeAreaView>
   );
 }
@@ -132,4 +310,111 @@ const styles = StyleSheet.create({
   itemNote: { color: '#0f172a', fontSize: 16, fontWeight: '700' },
   date: { color: '#64748b', marginTop: 4 },
   empty: { color: '#64748b', lineHeight: 20, textAlign: 'center' },
+  budgetCard: {
+  backgroundColor: '#fff',
+  borderRadius: 16,
+  padding: 16,
+  marginTop: 4,
+},
+
+budgetHeader: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  marginBottom: 12,
+},
+
+editBudget: {
+  color: '#2563eb',
+  fontWeight: '700',
+  fontSize: 15,
+},
+
+budgetAmount: {
+  fontSize: 17,
+  fontWeight: '700',
+  color: '#0f172a',
+  marginBottom: 6,
+},
+
+spentAmount: {
+  fontSize: 15,
+  color: '#dc2626',
+  marginBottom: 4,
+},
+
+remainingAmount: {
+  fontSize: 15,
+  fontWeight: '700',
+  marginBottom: 14,
+},
+
+progressTrack: {
+  height: 10,
+  backgroundColor: '#e2e8f0',
+  borderRadius: 10,
+  overflow: 'hidden',
+},
+
+progressFill: {
+  height: '100%',
+  borderRadius: 10,
+},
+
+progressText: {
+  textAlign: 'right',
+  marginTop: 8,
+  color: '#64748b',
+  fontWeight: '600',
+},
+
+modalOverlay: {
+  flex: 1,
+  justifyContent: 'flex-end',
+  backgroundColor: 'rgba(0,0,0,0.45)',
+},
+
+modalContainer: {
+  backgroundColor: '#fff',
+  borderTopLeftRadius: 24,
+  borderTopRightRadius: 24,
+  padding: 24,
+},
+
+modalTitle: {
+  fontSize: 22,
+  fontWeight: '700',
+  marginBottom: 18,
+  color: '#0f172a',
+},
+
+modalInput: {
+  borderWidth: 1,
+  borderColor: '#cbd5e1',
+  borderRadius: 10,
+  paddingHorizontal: 14,
+  paddingVertical: 12,
+  fontSize: 16,
+  marginBottom: 18,
+},
+
+saveButton: {
+  backgroundColor: '#2563eb',
+  paddingVertical: 14,
+  borderRadius: 10,
+  alignItems: 'center',
+},
+
+saveButtonText: {
+  color: '#fff',
+  fontWeight: '700',
+  fontSize: 16,
+},
+
+cancelButton: {
+  textAlign: 'center',
+  marginTop: 16,
+  color: '#64748b',
+  fontWeight: '700',
+},
 });
